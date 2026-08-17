@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { guestId, guestName, supabase } from "./supabase";
+import { guestId, guestName, supabase, uid } from "./supabase";
 import {
   freeTiles,
   generateBoard,
@@ -59,7 +59,7 @@ export const useGameStore = create<State>((set, get) => ({
     // remount can otherwise land on the old, already-subscribed channel —
     // supabase.channel() hands back the existing one and .on() then throws.
     const channel = supabase
-      .channel(`room:${code}:${crypto.randomUUID()}`)
+      .channel(`room:${code}:${uid()}`)
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "rooms", filter: `code=eq.${code}` },
