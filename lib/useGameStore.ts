@@ -10,12 +10,40 @@ import {
   type Tile,
 } from "./mahjong";
 
+export const HINTS_PER_GAME = 3;
+
+/**
+ * Hints are budgeted per device and per room, in localStorage, so reloading
+ * doesn't hand out three more. Cleared when a rematch deals a fresh board.
+ */
+const hintKey = (code: string) => `hints:${code}`;
+
+const hintsLeftFor = (code: string) => {
+  try {
+    const used = Number(localStorage.getItem(hintKey(code)) ?? 0);
+    return Math.max(0, HINTS_PER_GAME - (Number.isFinite(used) ? used : 0));
+  } catch {
+    return HINTS_PER_GAME;
+  }
+};
+
+const storeHintsUsed = (code: string, used: number) => {
+  try {
+    if (used <= 0) localStorage.removeItem(hintKey(code));
+    else localStorage.setItem(hintKey(code), String(used));
+  } catch {
+    // Private browsing: the budget lasts as long as the tab does.
+  }
+};
+
 type State = {
   guest: string;
   room: Room | null;
   selected: string | null;
   /** Tile ids the hint is currently pointing at. */
   hinted: string[];
+  /** Hints this device may still spend on the current board. */
+  hintsLeft: number;
   error: string | null;
   /** Join the room, load it, and stream every change from the opponent. */
   enter: (code: string) => Promise<() => void>;
@@ -33,21 +61,24 @@ export const useGameStore = create<State>((set, get) => ({
   room: null,
   selected: null,
   hinted: [],
+  hintsLeft: HINTS_PER_GAME,
   error: null,
 
   enter: async (code) => {
     const guest = guestId();
-    set({ guest });
+    set({ guest, hintsLeft: hintsLeftFor(code) });
 
     const apply = (room: Room | null) => {
       if (!room) return set({ error: "Room not found" });
       // Back in the lobby means a rematch dealt a new board, so anything the
-      // player had picked out points at tiles that no longer exist.
-      const stale = room.status === "lobby";
+      // player had picked out points at tiles that no longer exist — and the
+      // hint budget starts over.
+      const fresh = room.status === "lobby";
+      if (fresh) storeHintsUsed(room.code, 0);
       set({
         room,
         error: null,
-        ...(stale ? { selected: null, hinted: [] } : {}),
+        ...(fresh ? { selected: null, hinted: [], hintsLeft: HINTS_PER_GAME } : {}),
       });
       // Nobody can move any more, but tiles remain: end it.
       if (room.status === "playing" && !hasMoves(liveTiles(room.board, room.matches))) {
@@ -122,14 +153,16 @@ export const useGameStore = create<State>((set, get) => ({
   },
 
   hint: () => {
-    const { room } = get();
-    if (!room || room.status !== "playing") return;
+    const { room, hintsLeft } = get();
+    if (!room || room.status !== "playing" || hintsLeft <= 0) return;
 
     const byFace = new Map<string, string>();
     for (const t of freeTiles(liveTiles(room.board, room.matches))) {
       const partner = byFace.get(t.face);
       if (partner) {
-        set({ hinted: [partner, t.id], selected: null });
+        // Only a hint that actually found a pair costs one.
+        storeHintsUsed(room.code, HINTS_PER_GAME - (hintsLeft - 1));
+        set({ hinted: [partner, t.id], selected: null, hintsLeft: hintsLeft - 1 });
         setTimeout(() => {
           if (get().hinted[0] === partner) set({ hinted: [] });
         }, 2500);

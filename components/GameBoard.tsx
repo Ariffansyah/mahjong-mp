@@ -60,10 +60,12 @@ export default function GameBoard() {
   return (
     <div className="flex min-h-0 flex-1">
       {/* Fills the space left under the header, so `m-auto` parks the board in
-          the middle of it. Pans on both axes once zoomed past the pane. */}
+          the middle of it. No touch-action override on purpose: the default
+          `auto` pans both axes and keeps pinch-zoom, whereas `pan-x pan-y`
+          blocks pinch and is honoured inconsistently across mobile browsers. */}
       <div
         ref={pane}
-        className="grid flex-1 touch-pan-x touch-pan-y overflow-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="grid flex-1 overflow-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
         <div className="relative m-auto" style={style(STEPS[step])}>
           {tiles.map((tile) => (

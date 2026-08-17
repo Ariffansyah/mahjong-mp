@@ -5,10 +5,10 @@ import Link from "next/link";
 import GameBoard from "./GameBoard";
 import { guestName } from "@/lib/supabase";
 import { liveTiles, scores } from "@/lib/mahjong";
-import { useGameStore } from "@/lib/useGameStore";
+import { HINTS_PER_GAME, useGameStore } from "@/lib/useGameStore";
 
 export default function Room({ code }: { code: string }) {
-  const { room, guest, error, enter, ready, hint, rematch } = useGameStore();
+  const { room, guest, error, hintsLeft, enter, ready, hint, rematch } = useGameStore();
   const [shared, setShared] = useState(false);
 
   useEffect(() => {
@@ -193,10 +193,11 @@ export default function Room({ code }: { code: string }) {
         <button
           type="button"
           onClick={hint}
-          className="fixed right-4 z-500 rounded-full bg-sky-500/90 px-5 py-3 text-sm font-semibold shadow-lg active:scale-95"
+          disabled={hintsLeft <= 0}
+          className="fixed right-4 z-500 rounded-full bg-sky-500/90 px-5 py-3 text-sm font-semibold shadow-lg active:scale-95 disabled:bg-green-900/90 disabled:opacity-60"
           style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
         >
-          Hint
+          Hint {hintsLeft}/{HINTS_PER_GAME}
         </button>
       )}
 
