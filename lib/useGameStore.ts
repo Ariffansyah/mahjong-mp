@@ -16,21 +16,21 @@ export const HINTS_PER_GAME = 3;
  * Hints are budgeted per device and per room, in localStorage, so reloading
  * doesn't hand out three more. Cleared when a rematch deals a fresh board.
  */
-const hintKey = (code: string) => `hints:${code}`;
+const hintKey = (code: string, guest: string) => `hints:${code}:${guest}`;
 
-const hintsLeftFor = (code: string) => {
+const hintsLeftFor = (code: string, guest: string) => {
   try {
-    const used = Number(localStorage.getItem(hintKey(code)) ?? 0);
+    const used = Number(localStorage.getItem(hintKey(code, guest)) ?? 0);
     return Math.max(0, HINTS_PER_GAME - (Number.isFinite(used) ? used : 0));
   } catch {
     return HINTS_PER_GAME;
   }
 };
 
-const storeHintsUsed = (code: string, used: number) => {
+const storeHintsUsed = (code: string, guest: string, used: number) => {
   try {
-    if (used <= 0) localStorage.removeItem(hintKey(code));
-    else localStorage.setItem(hintKey(code), String(used));
+    if (used <= 0) localStorage.removeItem(hintKey(code, guest));
+    else localStorage.setItem(hintKey(code, guest), String(used));
   } catch {
     // Private browsing: the budget lasts as long as the tab does.
   }
@@ -66,7 +66,7 @@ export const useGameStore = create<State>((set, get) => ({
 
   enter: async (code) => {
     const guest = guestId();
-    set({ guest, hintsLeft: hintsLeftFor(code) });
+    set({ guest, hintsLeft: hintsLeftFor(code, guest) });
 
     const apply = (room: Room | null) => {
       if (!room) return set({ error: "Room not found" });
@@ -74,7 +74,7 @@ export const useGameStore = create<State>((set, get) => ({
       // player had picked out points at tiles that no longer exist — and the
       // hint budget starts over.
       const fresh = room.status === "lobby";
-      if (fresh) storeHintsUsed(room.code, 0);
+      if (fresh) storeHintsUsed(room.code, guest, 0);
       set({
         room,
         error: null,
@@ -153,7 +153,7 @@ export const useGameStore = create<State>((set, get) => ({
   },
 
   hint: () => {
-    const { room, hintsLeft } = get();
+    const { room, guest, hintsLeft } = get();
     if (!room || room.status !== "playing" || hintsLeft <= 0) return;
 
     const byFace = new Map<string, string>();
@@ -161,7 +161,7 @@ export const useGameStore = create<State>((set, get) => ({
       const partner = byFace.get(t.face);
       if (partner) {
         // Only a hint that actually found a pair costs one.
-        storeHintsUsed(room.code, HINTS_PER_GAME - (hintsLeft - 1));
+        storeHintsUsed(room.code, guest, HINTS_PER_GAME - (hintsLeft - 1));
         set({ hinted: [partner, t.id], selected: null, hintsLeft: hintsLeft - 1 });
         setTimeout(() => {
           if (get().hinted[0] === partner) set({ hinted: [] });

@@ -184,7 +184,7 @@ export default function Room({ code }: { code: string }) {
           </Card>
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 px-1 py-2">
+        <div className="px-1 py-2">
           <GameBoard />
         </div>
       )}

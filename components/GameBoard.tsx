@@ -6,28 +6,30 @@ import Tile from "./Tile";
 import { BOARD_COLS, BOARD_ROWS, MAX_Z, isTileFree, liveTiles } from "@/lib/mahjong";
 import { useGameStore } from "@/lib/useGameStore";
 
-/**
- * Base pitch: readable tiles (44px), or bigger where the whole board fits
- * anyway. 14 columns across a phone would otherwise squeeze tiles to ~26px.
- */
-const BASE = `max(44px, min(54px, (100vw - 8px) / ${BOARD_COLS + 0.7}, (100svh - 140px) / ${
-  BOARD_ROWS * 1.34 + 0.7
-}))`;
+/** Board box in tile pitches, including the room the layer offset needs. */
+const COLS = BOARD_COLS + MAX_Z * 0.16;
+const ROWS = BOARD_ROWS * 1.34 + MAX_Z * 0.16;
+/** Never below thumb-size, never cartoonishly large on a desktop. */
+const MIN_PITCH = 44;
+const MAX_PITCH = 54;
 
 const STEPS = [0.55, 0.7, 0.85, 1, 1.25, 1.5, 1.85];
 const DEFAULT_STEP = 3;
 
-const style = (scale: number) =>
-  ({
-    "--tw": `calc(${scale} * ${BASE})`,
-    "--th": "calc(var(--tw) * 1.34)",
-    "--off": "calc(var(--tw) * 0.16)",
-    // Upper layers lift tiles upward, so the top row needs headroom inside the
-    // box — otherwise it overflows above the board and centring can't reach it.
-    "--zpad": `calc(${MAX_Z} * var(--off))`,
-    width: `calc(${BOARD_COLS} * var(--tw) + ${MAX_Z} * var(--off))`,
-    height: `calc(${BOARD_ROWS} * var(--th) + var(--zpad))`,
-  }) as CSSProperties;
+/**
+ * Everything is derived from --tw, which JS sets in plain pixels. It used to be
+ * a CSS `min()` over `100vw` / `100svh`, but a browser that doesn't know `svh`
+ * throws out the whole expression: --tw dies, every left/top/width falls back
+ * to `auto`, and all 144 tiles pile into one corner — unpannable, unclickable.
+ * Measuring also beats guessing how much height the header takes.
+ */
+const boardStyle = {
+  "--th": "calc(var(--tw) * 1.34)",
+  "--off": "calc(var(--tw) * 0.16)",
+  "--zpad": `calc(${MAX_Z} * var(--off))`,
+  width: `calc(${BOARD_COLS} * var(--tw) + ${MAX_Z} * var(--off))`,
+  height: `calc(${BOARD_ROWS} * var(--th) + var(--zpad))`,
+} as CSSProperties;
 
 export default function GameBoard() {
   const room = useGameStore((s) => s.room);
@@ -37,13 +39,40 @@ export default function GameBoard() {
   const [step, setStep] = useState(DEFAULT_STEP);
   const pane = useRef<HTMLDivElement>(null);
 
-  // Zooming keeps the middle of the turtle in view instead of jumping to a corner.
+  const scale = STEPS[step];
+
   useEffect(() => {
     const el = pane.current;
     if (!el) return;
-    el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
-    el.scrollTop = (el.scrollHeight - el.clientHeight) / 2;
-  }, [step]);
+
+    const fit = () => {
+      // visualViewport is the only number that's right while mobile browser
+      // chrome slides in and out; innerHeight covers everything older.
+      const viewport = window.visualViewport?.height ?? window.innerHeight;
+      const height = Math.max(240, viewport - el.getBoundingClientRect().top - 8);
+      el.style.height = `${height}px`;
+
+      const base = Math.min(
+        MAX_PITCH,
+        Math.max(MIN_PITCH, Math.min(el.clientWidth / COLS, height / ROWS)),
+      );
+      el.style.setProperty("--tw", `${base * scale}px`);
+
+      // Keep the middle of the turtle in view rather than a corner.
+      el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2;
+      el.scrollTop = (el.scrollHeight - el.clientHeight) / 2;
+    };
+
+    fit();
+    window.addEventListener("resize", fit);
+    window.addEventListener("orientationchange", fit);
+    window.visualViewport?.addEventListener("resize", fit);
+    return () => {
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("orientationchange", fit);
+      window.visualViewport?.removeEventListener("resize", fit);
+    };
+  }, [scale]);
 
   const tiles = useMemo(
     () => (room ? liveTiles(room.board, room.matches) : []),
@@ -58,16 +87,14 @@ export default function GameBoard() {
     setStep((s) => Math.min(STEPS.length - 1, Math.max(0, s + d)));
 
   return (
-    <div className="flex min-h-0 flex-1">
-      {/* Fills the space left under the header, so `m-auto` parks the board in
-          the middle of it. No touch-action override on purpose: the default
-          `auto` pans both axes and keeps pinch-zoom, whereas `pan-x pan-y`
-          blocks pinch and is honoured inconsistently across mobile browsers. */}
+    <div className="w-full">
+      {/* Height is set in JS; `m-auto` centres the board and still leaves the
+          overflow reachable when it's zoomed past the pane. */}
       <div
         ref={pane}
-        className="grid flex-1 overflow-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="grid w-full overflow-auto overscroll-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       >
-        <div className="relative m-auto" style={style(STEPS[step])}>
+        <div className="relative m-auto" style={boardStyle}>
           {tiles.map((tile) => (
             <Tile
               key={tile.id}
