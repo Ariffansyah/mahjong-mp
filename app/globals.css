@@ -24,3 +24,24 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  10%,
+  70% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Not every system font carries the Mahjong Tiles block. */
+.tile-face {
+  font-family: "Noto Sans Symbols 2", "Segoe UI Symbol", "Apple Symbols",
+    "DejaVu Sans", sans-serif;
+}

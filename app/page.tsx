@@ -1,69 +1,81 @@
-import Image from "next/image";
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import type { Route } from "next";
+import { generateBoard, randomRoomCode } from "@/lib/mahjong";
+import { guestId, guestName, supabase } from "@/lib/supabase";
 
 export default function Home() {
+  const router = useRouter();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function create() {
+    setBusy(true);
+    setError(null);
+    const guest = guestId();
+
+    // Retry only on a code collision.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const room = randomRoomCode();
+      const { error } = await supabase.from("rooms").insert({
+        code: room,
+        board: generateBoard(),
+        players: [{ id: guest, name: guestName(guest), ready: false }],
+      });
+      if (!error) return router.push(`/room/${room}` as Route);
+      if (error.code !== "23505") {
+        setError(error.message);
+        break;
+      }
+    }
+    setBusy(false);
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <main className="flex min-h-svh flex-col items-center justify-center gap-7 p-6 text-green-50 [background-image:radial-gradient(120%_80%_at_50%_0%,#14532d_0%,#052e16_60%,#031c0d_100%)]">
+      <p className="tile-face text-5xl">🀄︎🀅︎🀆︎</p>
+      <h1 className="text-4xl font-semibold tracking-wide">Mahjong Duel</h1>
+      <p className="max-w-xs text-center text-sm opacity-80">
+        Same board, two players, no login. Clear more pairs than your opponent.
+      </p>
+
+      <button
+        type="button"
+        onClick={create}
+        disabled={busy}
+        className="w-full max-w-xs rounded-xl bg-amber-400 py-4 text-lg font-semibold text-stone-900 active:scale-95 disabled:opacity-50"
+      >
+        {busy ? "Dealing…" : "Create game"}
+      </button>
+
+      <form
+        className="flex w-full max-w-xs gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (code.length === 4) router.push(`/room/${code.toUpperCase()}` as Route);
+        }}
+      >
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value.toUpperCase().slice(0, 4))}
+          placeholder="CODE"
+          aria-label="Room code"
+          inputMode="text"
+          autoCapitalize="characters"
+          className="min-w-0 flex-1 rounded-xl border border-green-700 bg-green-900/70 px-3 py-3 text-center font-mono text-lg tracking-[0.3em] uppercase placeholder:opacity-40"
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+        <button
+          type="submit"
+          className="rounded-xl border border-green-700 px-5 py-3 active:scale-95"
+        >
+          Join
+        </button>
+      </form>
+
+      {error && <p className="text-red-300">{error}</p>}
+    </main>
   );
 }

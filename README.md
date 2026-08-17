@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Mahjong Duel
 
-## Getting Started
+Two-player real-time Mahjong solitaire. Both players share one board: a pair
+cleared by either player disappears for both, and whoever clears more pairs wins.
+No accounts — each browser gets a random `guest_id` in `localStorage`.
 
-First, run the development server:
+## Setup
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+1. Create a Supabase project, then run `supabase/schema.sql` in the SQL editor.
+2. Copy `.env.local.example` to `.env.local` and fill in the project URL and anon key.
+3. `pnpm dev`, open the app, click **Create game**, and send the invite link to
+   the second player. Both press **Ready** to start.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Layout
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+| Path                     | What                                                                |
+| ------------------------ | ------------------------------------------------------------------- |
+| `app/page.tsx`           | Create a game / join by 4-letter code                               |
+| `app/room/[code]/page.tsx` | Awaits `params`, renders the client room                           |
+| `components/Room.tsx`    | Lobby, scoreboard, end-of-game banner                               |
+| `components/GameBoard.tsx` | Positions the live tiles, computes which are playable             |
+| `components/Tile.tsx`     | One tile: coordinates → CSS position, z-index, shadow              |
+| `lib/mahjong.ts`         | Board generation, `isTileFree`, derived state (live tiles, scores)   |
+| `lib/useGameStore.ts`    | Zustand store + realtime subscription                               |
+| `lib/supabase.ts`        | Client and guest id                                                 |
+| `supabase/schema.sql`    | `rooms` table, RLS, and the three mutation functions                |
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Checks
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`pnpm check` generates 20 boards and plays each one to completion, asserting
+every pair was a legal move — plus unit assertions for the free-tile rule.
