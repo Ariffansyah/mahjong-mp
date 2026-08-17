@@ -104,45 +104,67 @@ const shuffle = <T,>(arr: T[], rng: () => number) => {
 };
 
 /**
- * Builds a board that is guaranteed solvable by playing the game backwards:
- * repeatedly take two currently-free slots off the full layout and give them a
- * matching face. Replaying those assignments in reverse is a winning game.
- * ponytail: O(n^3)-ish, ~1.5M ops. Runs once when a room is created, so fine.
+ * Hands out faces so the result is guaranteed solvable, by playing the game
+ * backwards: repeatedly take two currently-free slots and give them a matching
+ * face. Works for the full layout (a new board) or for whatever is left
+ * standing (a reshuffle after a deadlock).
+ *
+ * Returned in removal order, so [0..1], [2..3], ... is itself a winning game.
+ * Rendering ignores array order (absolute position + z-index), and
+ * mahjong.check.ts uses this property to prove boards are solvable.
+ *
+ * ponytail: O(n^3)-ish, ~1.5M ops for 144 tiles. Runs on a deal, not per move.
  */
-export function generateBoard(rng: () => number = Math.random): Tile[] {
-  const pairs = shuffle(
-    FACES.flatMap((f) => [f, f]), // each face appears in 2 pairs => 4 tiles
-    rng,
-  );
+export function dealFaces(
+  slots: Omit<Tile, "face">[],
+  faces: string[],
+  rng: () => number = Math.random,
+): Tile[] {
+  if (slots.length !== faces.length) throw new Error("slot/face count mismatch");
 
-  let remaining = layoutSlots();
-  const board: Tile[] = [];
+  const counts = new Map<string, number>();
+  for (const f of faces) counts.set(f, (counts.get(f) ?? 0) + 1);
+
+  const pairs: string[] = [];
+  for (const [face, n] of counts) {
+    if (n % 2) throw new Error(`odd number of ${face}`);
+    for (let i = 0; i < n / 2; i++) pairs.push(face);
+  }
+  shuffle(pairs, rng);
+
+  let remaining = slots;
+  const dealt: Tile[] = [];
 
   while (remaining.length) {
-    // Peel the top layer first. Tiles in the highest remaining layer are never
-    // covered, so each non-empty row of it offers a free end — which keeps at
-    // least two candidates available until the layer is empty. Picking freely
-    // across layers instead can strand a covered tile with nothing on top left
-    // to remove.
+    // Peel the top layer first: its tiles are never covered, so each non-empty
+    // row offers a free end and there are normally two to take. Picking freely
+    // across layers can strand a covered tile with nothing left on top of it.
+    const free = freeTiles(remaining as Tile[]);
     const top = Math.max(...remaining.map((t) => t.z));
-    const layer = remaining.filter((t) => t.z === top) as Tile[];
-    const free = shuffle(
-      layer.filter((t) => isTileFree(t, remaining as Tile[])),
+    const onTop = shuffle(
+      free.filter((t) => t.z === top),
       rng,
+    );
+    // An odd number left in the top layer means its last tile has to pair with
+    // one further down — matches are not restricted to a single layer.
+    const two = (
+      onTop.length >= 2
+        ? onTop
+        : [...onTop, ...shuffle(free.filter((t) => t.z !== top), rng)]
     ).slice(0, 2);
-    if (free.length < 2) throw new Error("layout has no free pair");
+    if (two.length < 2) throw new Error("no free pair left");
 
     const face = pairs.pop()!;
-    for (const slot of free) board.push({ ...slot, face });
-    const taken = new Set(free.map((t) => t.id));
+    for (const slot of two) dealt.push({ ...slot, face });
+    const taken = new Set(two.map((t) => t.id));
     remaining = remaining.filter((t) => !taken.has(t.id));
   }
 
-  // Returned in removal order, so board[0..1], board[2..3], ... is itself a
-  // winning game. Rendering ignores array order (absolute position + z-index),
-  // and mahjong.check.ts uses this property to prove every board is solvable.
-  return board;
+  return dealt;
 }
+
+export const generateBoard = (rng: () => number = Math.random): Tile[] =>
+  dealFaces(layoutSlots(), FACES.flatMap((f) => [f, f, f, f]), rng);
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // no I/O/0/1
 export const randomRoomCode = () =>

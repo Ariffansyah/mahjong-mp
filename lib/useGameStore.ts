@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { guestId, guestName, supabase, uid } from "./supabase";
 import {
+  dealFaces,
   freeTiles,
   generateBoard,
   hasMoves,
@@ -44,6 +45,8 @@ type State = {
   hinted: string[];
   /** Hints this device may still spend on the current board. */
   hintsLeft: number;
+  /** Transient message, e.g. "board reshuffled". `at` doubles as a render key. */
+  notice: { text: string; at: number } | null;
   error: string | null;
   /** Join the room, load it, and stream every change from the opponent. */
   enter: (code: string) => Promise<() => void>;
@@ -54,6 +57,8 @@ type State = {
   hint: () => void;
   /** Deal a fresh board in the same room and send both players to the lobby. */
   rematch: () => Promise<void>;
+  /** Re-deal the faces of the tiles still standing after a deadlock. */
+  reshuffle: () => Promise<void>;
 };
 
 export const useGameStore = create<State>((set, get) => ({
@@ -62,6 +67,7 @@ export const useGameStore = create<State>((set, get) => ({
   selected: null,
   hinted: [],
   hintsLeft: HINTS_PER_GAME,
+  notice: null,
   error: null,
 
   enter: async (code) => {
@@ -75,14 +81,36 @@ export const useGameStore = create<State>((set, get) => ({
       // hint budget starts over.
       const fresh = room.status === "lobby";
       if (fresh) storeHintsUsed(room.code, guest, 0);
+
+      const prev = get().room;
+      // Same tiles gone, different faces: the opponent's client reshuffled.
+      const reshuffled =
+        !!prev &&
+        prev.matches.length === room.matches.length &&
+        prev.board.length === room.board.length &&
+        prev.board.some((t, i) => t.face !== room.board[i].face);
+
+      const matched = !prev || prev.matches.length !== room.matches.length;
+
       set({
         room,
         error: null,
+        // A reshuffle raises a notice; the next match retires it so the
+        // "opponent cleared" toast can show again.
+        notice: reshuffled
+          ? { text: "Board reshuffled", at: Date.now() }
+          : matched
+            ? null
+            : get().notice,
         ...(fresh ? { selected: null, hinted: [], hintsLeft: HINTS_PER_GAME } : {}),
+        ...(reshuffled ? { selected: null, hinted: [] } : {}),
       });
-      // Nobody can move any more, but tiles remain: end it.
+
+      // Tiles left but no legal move: re-deal rather than end the game stuck.
+      // Only the lowest guest id acts, so two clients don't reshuffle twice.
       if (room.status === "playing" && !hasMoves(liveTiles(room.board, room.matches))) {
-        supabase.rpc("finish_room", { p_code: room.code });
+        const first = [...room.players.map((p) => p.id)].sort()[0];
+        if (first === guest) get().reshuffle();
       }
     };
 
@@ -182,5 +210,46 @@ export const useGameStore = create<State>((set, get) => ({
     });
     // A no-op if the opponent pressed first: their board comes back instead.
     if (data) set({ room: data as Room, selected: null, hinted: [] });
+  },
+
+  reshuffle: async () => {
+    const { room, guest } = get();
+    if (!room || room.status !== "playing") return;
+
+    const live = liveTiles(room.board, room.matches);
+    let dealt: Tile[] | undefined;
+    // The dealer can fail on a pathological remainder (a lone covered tile), so
+    // give it a few tries before giving up and ending the game as stuck.
+    for (let attempt = 0; attempt < 5 && !dealt; attempt++) {
+      try {
+        dealt = dealFaces(
+          live.map(({ id, x, y, z }) => ({ id, x, y, z })),
+          live.map((t) => t.face),
+        );
+      } catch {
+        dealt = undefined;
+      }
+    }
+    if (!dealt) {
+      await supabase.rpc("finish_room", { p_code: room.code });
+      return;
+    }
+
+    const faces = new Map(dealt.map((t) => [t.id, t.face]));
+    const board = room.board.map((t) => ({ ...t, face: faces.get(t.id) ?? t.face }));
+
+    const { data } = await supabase.rpc("reshuffle_room", {
+      p_code: room.code,
+      p_guest: guest,
+      p_board: board,
+    });
+    if (data) {
+      set({
+        room: data as Room,
+        selected: null,
+        hinted: [],
+        notice: { text: "No moves left — board reshuffled", at: Date.now() },
+      });
+    }
   },
 }));

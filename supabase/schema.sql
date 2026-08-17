@@ -138,6 +138,44 @@ begin
 end $$;
 
 
+-- reshuffle_room: called when no matching free pair is left. Re-deals the faces
+-- of the tiles still standing so play can continue instead of ending stuck.
+-- The guards allow a permutation and nothing else: same tiles at the same
+-- coordinates, same faces in the same quantities. So a tampered client can't
+-- turn the board into 144 of one face, or slide tiles out from under a stack.
+-- ponytail: it cannot verify the board really was deadlocked — that check needs
+-- isTileFree in plpgsql. Port it if reshuffle-at-will becomes a problem.
+create or replace function reshuffle_room(p_code text, p_guest text, p_board jsonb)
+returns rooms language plpgsql security definer set search_path = public as $$
+declare r rooms;
+begin
+  perform 1 from rooms where code = p_code for update;
+
+  update rooms set board = p_board
+  where code = p_code
+    and status = 'playing'
+    and players @> jsonb_build_array(jsonb_build_object('id', p_guest))
+    and jsonb_array_length(p_board) = jsonb_array_length(board)
+    -- every (id, x, y, z) is unchanged
+    and not exists (
+      select t->>'id', t->>'x', t->>'y', t->>'z' from jsonb_array_elements(p_board) t
+      except
+      select t->>'id', t->>'x', t->>'y', t->>'z' from jsonb_array_elements(board) t)
+    -- each face still appears exactly as many times as before
+    and not exists (
+      select t->>'face', count(*) from jsonb_array_elements(p_board) t group by 1
+      except
+      select t->>'face', count(*) from jsonb_array_elements(board) t group by 1)
+  returning * into r;
+
+  if r.code is null then
+    select * into r from rooms where code = p_code;
+  end if;
+
+  return r;
+end $$;
+
+
 -- restart_room: rematch in place. Deals a fresh board, wipes the score and
 -- sends both players back to the lobby, so nobody has to swap links again.
 -- Only a seated player of a finished room can do it, and whoever presses second
@@ -177,3 +215,4 @@ grant execute on function set_ready(text, text)                to anon, authenti
 grant execute on function claim_match(text, text, text, text)   to anon, authenticated;
 grant execute on function finish_room(text)                     to anon, authenticated;
 grant execute on function restart_room(text, text, jsonb)       to anon, authenticated;
+grant execute on function reshuffle_room(text, text, jsonb)     to anon, authenticated;

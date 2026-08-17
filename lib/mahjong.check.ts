@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import {
   FACES,
+  dealFaces,
   generateBoard,
   hasMoves,
   isTileFree,
@@ -77,6 +78,58 @@ const t = (id: string, x: number, y: number, z: number): Tile => ({
     }
     assert.equal(remaining.length, 0, "board fully cleared");
   }
+}
+
+// --- reshuffle: same faces, new arrangement, still solvable -----------------
+{
+  let seed = 999;
+  const rng = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x80000000);
+
+  for (let run = 0; run < 10; run++) {
+    // Play a board partway, in a mix of layers, then reshuffle what is left.
+    const board = generateBoard(rng);
+    const played = 10 + run * 6; // pairs already cleared, 10..64 of 72
+    const live = board.slice(played * 2);
+    assert.ok(live.length > 0);
+
+    const faces = live.map((t) => t.face).sort();
+    const dealt = dealFaces(
+      live.map(({ id, x, y, z }) => ({ id, x, y, z })),
+      live.map((t) => t.face),
+      rng,
+    );
+
+    assert.equal(dealt.length, live.length, "same tiles remain");
+    assert.deepEqual(dealt.map((t) => t.face).sort(), faces, "face multiset kept");
+    assert.deepEqual(
+      dealt.map((t) => t.id).sort(),
+      live.map((t) => t.id).sort(),
+      "positions untouched",
+    );
+
+    let remaining = dealt;
+    for (let i = 0; i < dealt.length; i += 2) {
+      const [a, b] = [dealt[i], dealt[i + 1]];
+      assert.equal(a.face, b.face);
+      assert.ok(isTileFree(a, remaining), `reshuffled pair ${i / 2} a free`);
+      assert.ok(isTileFree(b, remaining), `reshuffled pair ${i / 2} b free`);
+      remaining = remaining.filter((t) => t.id !== a.id && t.id !== b.id);
+    }
+    assert.equal(remaining.length, 0, "reshuffled board clears");
+  }
+
+  // A top layer holding an odd number of tiles forces a cross-layer pair.
+  const odd = [
+    { id: "a", x: 5, y: 3, z: 0 },
+    { id: "b", x: 6, y: 3, z: 0 },
+    { id: "c", x: 7, y: 3, z: 0 },
+    { id: "d", x: 6, y: 3, z: 1 },
+  ];
+  const dealt = dealFaces(odd, ["X", "X", "Y", "Y"], rng);
+  assert.equal(dealt.length, 4);
+  assert.equal(dealt[0].face, dealt[1].face);
+  assert.ok(isTileFree(dealt[0], dealt), "first cross-layer pick is free");
+  assert.ok(isTileFree(dealt[1], dealt), "second cross-layer pick is free");
 }
 
 // --- derived state ----------------------------------------------------------

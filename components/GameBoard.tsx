@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import Tile from "./Tile";
 import { BOARD_COLS, BOARD_ROWS, MAX_Z, isTileFree, liveTiles } from "@/lib/mahjong";
-import { useGameStore } from "@/lib/useGameStore";
+import { HINTS_PER_GAME, useGameStore } from "@/lib/useGameStore";
 
 /** Board box in tile pitches, including the room the layer offset needs. */
 const COLS = BOARD_COLS + MAX_Z * 0.16;
@@ -36,8 +36,11 @@ export default function GameBoard() {
   const selected = useGameStore((s) => s.selected);
   const hinted = useGameStore((s) => s.hinted);
   const tap = useGameStore((s) => s.tap);
+  const hint = useGameStore((s) => s.hint);
+  const hintsLeft = useGameStore((s) => s.hintsLeft);
   const [step, setStep] = useState(DEFAULT_STEP);
   const pane = useRef<HTMLDivElement>(null);
+  const bar = useRef<HTMLDivElement>(null);
 
   const scale = STEPS[step];
 
@@ -49,7 +52,10 @@ export default function GameBoard() {
       // visualViewport is the only number that's right while mobile browser
       // chrome slides in and out; innerHeight covers everything older.
       const viewport = window.visualViewport?.height ?? window.innerHeight;
-      const height = Math.max(240, viewport - el.getBoundingClientRect().top - 8);
+      const height = Math.max(
+        200,
+        viewport - el.getBoundingClientRect().top - (bar.current?.offsetHeight ?? 0) - 8,
+      );
       el.style.height = `${height}px`;
 
       const base = Math.min(
@@ -108,9 +114,13 @@ export default function GameBoard() {
         </div>
       </div>
 
+      {/* In normal flow on purpose: a `fixed` bar anchors to the layout
+          viewport, which on phones extends behind the browser toolbar, so it
+          only appears after scrolling. */}
       <div
-        className="fixed left-4 z-500 flex items-center gap-2"
-        style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
+        ref={bar}
+        className="flex items-center gap-2 px-3 pt-2"
+        style={{ paddingBottom: "calc(env(safe-area-inset-bottom, 0px) + 0.5rem)" }}
       >
         <ZoomButton label="Zoom out" onClick={() => zoomBy(-1)} disabled={step === 0}>
           −
@@ -128,6 +138,15 @@ export default function GameBoard() {
           className="rounded-full bg-green-900/90 px-3 py-2 text-xs ring-1 ring-green-700 active:scale-95"
         >
           Reset
+        </button>
+
+        <button
+          type="button"
+          onClick={hint}
+          disabled={hintsLeft <= 0}
+          className="ml-auto rounded-full bg-sky-500/90 px-5 py-3 text-sm font-semibold active:scale-95 disabled:bg-green-900/90 disabled:opacity-60"
+        >
+          Hint {hintsLeft}/{HINTS_PER_GAME}
         </button>
       </div>
     </div>

@@ -5,10 +5,10 @@ import Link from "next/link";
 import GameBoard from "./GameBoard";
 import { guestName } from "@/lib/supabase";
 import { liveTiles, scores } from "@/lib/mahjong";
-import { HINTS_PER_GAME, useGameStore } from "@/lib/useGameStore";
+import { useGameStore } from "@/lib/useGameStore";
 
 export default function Room({ code }: { code: string }) {
-  const { room, guest, error, hintsLeft, enter, ready, hint, rematch } = useGameStore();
+  const { room, guest, error, notice, enter, ready, rematch } = useGameStore();
   const [shared, setShared] = useState(false);
 
   useEffect(() => {
@@ -119,17 +119,20 @@ export default function Room({ code }: { code: string }) {
         )}
       </header>
 
-      {/* Tiles vanishing on their own is confusing, so say who took them. The
-          key restarts the fade-out animation on every opponent match — no
-          timers, no state. */}
-      {lastByOpponent && (
+      {/* Tiles changing on their own is confusing, so say what happened. The
+          key restarts the fade-out animation on each new event — no timers, no
+          state. A reshuffle outranks a match, being the bigger surprise. */}
+      {(notice || lastByOpponent) && (
         <div className="pointer-events-none fixed top-16 left-1/2 z-500 -translate-x-1/2">
           <p
-            key={lastByOpponent.a}
+            key={notice ? notice.at : lastByOpponent!.a}
             className="tile-face animate-[toast_1.8s_ease-out_forwards] rounded-full bg-green-900/95 px-4 py-2 text-sm whitespace-nowrap shadow-lg ring-1 ring-amber-400/60"
           >
-            Opponent cleared{" "}
-            {room.board.find((t) => t.id === lastByOpponent.a)?.face}
+            {notice
+              ? notice.text
+              : `Opponent cleared ${
+                  room.board.find((t) => t.id === lastByOpponent!.a)?.face ?? ""
+                }`}
           </p>
         </div>
       )}
@@ -187,18 +190,6 @@ export default function Room({ code }: { code: string }) {
         <div className="px-1 py-2">
           <GameBoard />
         </div>
-      )}
-
-      {room.status === "playing" && me && (
-        <button
-          type="button"
-          onClick={hint}
-          disabled={hintsLeft <= 0}
-          className="fixed right-4 z-500 rounded-full bg-sky-500/90 px-5 py-3 text-sm font-semibold shadow-lg active:scale-95 disabled:bg-green-900/90 disabled:opacity-60"
-          style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 1rem)" }}
-        >
-          Hint {hintsLeft}/{HINTS_PER_GAME}
-        </button>
       )}
 
       {room.status === "finished" && (
