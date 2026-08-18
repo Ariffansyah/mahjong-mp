@@ -3,6 +3,19 @@
 import type { CSSProperties } from "react";
 import type { Tile as TileModel } from "@/lib/mahjong";
 
+const SUIT_COLOR: [number, number, string][] = [
+  [0x1f000, 0x1f003, "text-purple-600"], // winds
+  [0x1f004, 0x1f006, "text-red-600"], // dragons
+  [0x1f007, 0x1f00f, "text-blue-600"], // characters
+  [0x1f010, 0x1f018, "text-green-600"], // bamboo
+  [0x1f019, 0x1f021, "text-rose-600"], // circles
+  [0x1f022, 0x1f023, "text-pink-500"], // flowers
+];
+const suitColor = (face: string) => {
+  const cp = face.codePointAt(0)!;
+  return SUIT_COLOR.find(([lo, hi]) => cp >= lo && cp <= hi)?.[2];
+};
+
 /**
  * Geometry comes from the --tw / --th / --off custom properties set by
  * GameBoard, so the whole board scales with the viewport without JS.
@@ -43,7 +56,7 @@ export default function Tile({
         "transition-[transform,filter,box-shadow] duration-100 active:scale-95",
         selected
           ? "border-amber-500 border-b-amber-600 bg-gradient-to-b from-amber-100 to-amber-300 text-stone-900 shadow-[0_0_0_2px_var(--color-amber-300),3px_4px_6px_rgba(0,0,0,0.5)] -translate-y-[3px]"
-          : "border-stone-400 border-b-stone-500 bg-gradient-to-b from-stone-50 to-stone-300 text-stone-900 shadow-[2px_3px_4px_rgba(0,0,0,0.45)]",
+          : `border-stone-400 border-b-stone-500 bg-gradient-to-b from-stone-50 to-stone-300 ${suitColor(tile.face)} shadow-[2px_3px_4px_rgba(0,0,0,0.45)]`,
         hinted && !selected ? "ring-2 ring-sky-400 animate-pulse" : "",
         free
           ? "cursor-pointer hover:-translate-y-[2px] hover:brightness-105"
